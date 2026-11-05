@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jogo da Memória Mágico</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Canvas Confetti Library -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <!-- Google Fonts: Fredoka / Quicksand for playful feel -->
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Fredoka', cursive, sans-serif;
+            background: linear-gradient(135deg, #a8ff78 0%, #78ffd6 100%);
+            min-height: 100vh;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        /* 3D Card Flip Styles */
+        .perspective-1000 {
+            perspective: 1000px;
+        }
+        
+        .card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            transform-style: preserve-3d;
+        }
+
+        .card.flipped .card-inner {
+            transform: rotateY(180deg);
+        }
+
+        .card-front, .card-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            border-radius: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 8px 15px rgba(0, 0, 0, 0.15);
+        }
+
+        .card-back {
+            transform: rotateY(180deg);
+        }
+
+        /* Wobble animation for matched cards */
+        @keyframes popMatch {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.15) rotate(5deg); }
+            100% { transform: scale(1) rotate(0deg); }
+        }
+
+        .matched .card-inner {
+            transform: rotateY(180deg);
+            animation: popMatch 0.5s ease-in-out;
+        }
+
+        /* Floating animation for title elements */
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(-1deg); }
+            50% { transform: translateY(-8px) rotate(1deg); }
+        }
+        
+        .animate-float {
+            animation: float 3s ease-in-out infinite;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-between p-3 md:p-6 min-h-screen">
+
+    <!-- Header & Controls -->
+    <header class="w-full max-w-4xl flex flex-col sm:flex-row items-center justify-between gap-3 bg-white/80 backdrop-blur-md p-4 rounded-3xl shadow-lg border-4 border-white mb-4">
+        <div class="flex items-center gap-3">
+            <span class="text-4xl animate-float">🧩</span>
+            <div>
+                <h1 class="text-2xl md:text-3xl font-bold text-purple-700 tracking-wide">Jogo da Memória</h1>
+                <p class="text-sm font-semibold text-pink-500">Divirta-se e treine sua mente!</p>
+            </div>
+        </div>
+
+        <!-- Audio & Restart Controls -->
+        <div class="flex items-center gap-2">
+            <button id="soundToggleBtn" onclick="toggleSound()" class="p-3 bg-yellow-400 hover:bg-yellow-300 active:scale-95 text-yellow-950 font-bold rounded-2xl shadow-md transition-all flex items-center gap-2 border-b-4 border-yellow-600">
+                <i id="soundIcon" class="fas fa-volume-up text-xl"></i>
+            </button>
+            <button onclick="resetGame()" class="p-3 bg-green-500 hover:bg-green-400 active:scale-95 text-white font-bold rounded-2xl shadow-md transition-all flex items-center gap-2 border-b-4 border-green-700">
+                <i class="fas fa-redo-alt text-xl"></i>
+                <span class="hidden md:inline">Reiniciar</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Game Container -->
+    <main class="w-full max-w-4xl flex flex-col items-center gap-4 flex-grow justify-center">
+
+        <!-- Theme and Difficulty Selectors -->
+        <div class="w-full flex flex-col md:flex-row gap-3 justify-between items-center bg-white/60 backdrop-blur-sm p-3 rounded-2xl border-2 border-white/80 shadow">
+            
+            <!-- Theme Selection -->
+            <div class="flex items-center gap-2 w-full md:w-auto justify-center">
+                <span class="text-sm font-bold text-purple-900">Tema:</span>
+                <div class="flex gap-1 bg-purple-100 p-1 rounded-xl">
+                    <button onclick="changeTheme('animals')" id="theme-animals" class="theme-btn px-3 py-1.5 rounded-lg text-sm font-bold transition-all bg-purple-600 text-white shadow">
+                        🐶 Animais
+                    </button>
+                    <button onclick="changeTheme('emojis')" id="theme-emojis" class="theme-btn px-3 py-1.5 rounded-lg text-sm font-bold transition-all text-purple-800 hover:bg-purple-200">
+                        🤪 Caretas
+                    </button>
+                    <button onclick="changeTheme('heroes')" id="theme-heroes" class="theme-btn px-3 py-1.5 rounded-lg text-sm font-bold transition-all text-purple-800 hover:bg-purple-200">
+                        🦸 Heróis
+                    </button>
+                </div>
+            </div>
+
+            <!-- Difficulty Selection -->
+            <div class="flex items-center gap-2 w-full md:w-auto justify-center">
+                <span class="text-sm font-bold text-purple-900">Nível:</span>
+                <div class="flex gap-1 bg-purple-100 p-1 rounded-xl">
+                    <button onclick="changeDifficulty('easy')" id="diff-easy" class="diff-btn px-3 py-1.5 rounded-lg text-sm font-bold transition-all bg-green-500 text-white shadow">
+                        Fácil (4)
+                    </button>
+                    <button onclick="changeDifficulty('medium')" id="diff-medium" class="diff-btn px-3 py-1.5 rounded-lg text-sm font-bold transition-all text-purple-800 hover:bg-purple-200">
+                        Médio (6)
+                    </button>
+                    <button onclick="changeDifficulty('hard')" id="diff-hard" class="diff-btn px-3 py-1.5 rounded-lg text-sm font-bold transition-all text-purple-800 hover:bg-purple-200">
+                        Difícil (8)
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats Bar -->
+        <div class="w-full grid grid-cols-3 gap-2 text-center">
+            <div class="bg-white/80 backdrop-blur-md p-2 md:p-3 rounded-2xl shadow border-2 border-white">
+                <div class="text-xs md:text-sm text-gray-500 font-bold uppercase">Jogadas</div>
+                <div id="movesCount" class="text-xl md:text-2xl font-black text-purple-600">0</div>
+            </div>
+            <div class="bg-white/80 backdrop-blur-md p-2 md:p-3 rounded-2xl shadow border-2 border-white">
+                <div class="text-xs md:text-sm text-gray-500 font-bold uppercase">Pares</div>
+                <div id="pairsCount" class="text-xl md:text-2xl font-black text-pink-600">0 / 4</div>
+            </div>
+            <div class="bg-white/80 backdrop-blur-md p-2 md:p-3 rounded-2xl shadow border-2 border-white">
+                <div class="text-xs md:text-sm text-gray-500 font-bold uppercase">Tempo</div>
+                <div id="timer" class="text-xl md:text-2xl font-black text-amber-600">00:00</div>
+            </div>
+        </div>
+
+        <!-- Cards Board Container -->
+        <div id="gameBoard" class="w-full grid gap-3 p-3 bg-white/40 backdrop-blur-md rounded-3xl border-4 border-white/60 min-h-[340px] items-center justify-center">
+            <!-- Cards will be dynamically injected here -->
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="mt-4 text-center text-xs md:text-sm text-purple-900 font-semibold bg-white/40 px-4 py-1.5 rounded-full border border-white/50">
+        🎈 Aprenda brincando! Desenvolvido para super campeões.
+    </footer>
+
+    <!-- Victory Modal -->
+    <div id="victoryModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-3xl p-6 md:p-8 max-w-md w-full text-center shadow-2xl border-4 border-yellow-300 relative transform transition-all scale-90 opacity-0" id="modalCard">
+            
+            <div class="absolute -top-12 left-1/2 -translate-x-1/2 bg-yellow-400 p-4 rounded-full border-4 border-white shadow-lg text-4xl animate-bounce">
+                🏆
+            </div>
+
+            <h2 class="text-3xl font-black text-purple-700 mt-4 mb-2">PARABÉNS!</h2>
+            <p id="trophyTitle" class="text-lg font-bold text-pink-500 mb-4">Você é um Mestre da Memória!</p>
+
+            <!-- Star Rating Display -->
+            <div class="flex justify-center gap-2 text-4xl text-yellow-400 mb-4" id="starRating">
+                <i class="fas fa-star drop-shadow"></i>
+                <i class="fas fa-star drop-shadow"></i>
+                <i class="fas fa-star drop-shadow"></i>
+            </div>
+
+            <!-- End Stats Summary -->
+            <div class="bg-purple-50 p-4 rounded-2xl mb-6 border border-purple-100 text-purple-900 font-semibold flex justify-around">
+                <div>
+                    <span class="block text-xs text-purple-500 uppercase">Tempo</span>
+                    <span id="finalTime" class="text-xl font-black">00:00</span>
+                </div>
+                <div class="border-r border-purple-200"></div>
+                <div>
+                    <span class="block text-xs text-purple-500 uppercase">Jogadas</span>
+                    <span id="finalMoves" class="text-xl font-black">0</span>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <button onclick="closeModalAndRestart()" class="w-full py-4 bg-gradient-to-r from-green-400 to-emerald-500 hover:from-green-500 hover:to-emerald-600 text-white font-black text-xl rounded-2xl shadow-lg border-b-4 border-emerald-700 active:scale-95 transition-all">
+                JOGAR DE NOVO 🚀
+            </button>
+        </div>
+    </div>
+
+    <!-- JavaScript Logic -->
+    <script>
+        // Sound System using Web Audio API
+        class SoundEffects {
+            constructor() {
+                this.ctx = null;
+                this.enabled = true;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioContext = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioContext();
+                }
+            }
+
+            playFlip() {
+                if (!this.enabled) return;
+                this.init();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(300, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(600, this.ctx.currentTime + 0.08);
+                gain.gain.setValueAtTime(0.15, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.01, this.ctx.currentTime + 0.08);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.08);
+            }
+
+            playMatch() {
+                if (!this.enabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(523.25, now); // C5
+                osc.frequency.setValueAtTime(659.25, now + 0.1); // E5
+                osc.frequency.setValueAtTime(783.99, now + 0.2); // G5
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.35);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(now + 0.35);
+            }
+
+            playMismatch() {
+                if (!this.enabled) return;
+                this.init();
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(220, now);
+                osc.frequency.linearRampToValueAtTime(160, now + 0.15);
+                gain.gain.setValueAtTime(0.15, now);
+                gain.gain.linearRampToValueAtTime(0.01, now + 0.15);
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.start();
+                osc.stop(now + 0.15);
+            }
+
+            playVictory() {
+                if (!this.enabled) return;
+                this.init();
+                const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6
+                notes.forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    const now = this.ctx.currentTime + (idx * 0.12);
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(freq, now);
+                    gain.gain.setValueAtTime(0.2, now);
+                    gain.gain.linearRampToValueAtTime(0.01, now + 0.3);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start(now);
+                    osc.stop(now + 0.3);
+                });
+            }
+        }
+
+        const sound = new SoundEffects();
+
+        // Card Library Data
+        const themes = {
+            animals: [
+                { icon: '🐶', color: 'bg-amber-100', name: 'Cachorrinho' },
+                { icon: '🐱', color: 'bg-orange-100', name: 'Gatinho' },
+                { icon: '🦁', color: 'bg-yellow-100', name: 'Leão' },
+                { icon: 'Panda 🐼', iconOnly: '🐼', color: 'bg-emerald-100', name: 'Panda' },
+                { icon: '🐸', color: 'bg-green-100', name: 'Sapo' },
+                { icon: '🦊', color: 'bg-orange-200', name: 'Raposa' },
+                { icon: '🐰', color: 'bg-pink-100', name: 'Coelho' },
+                { icon: '🐵', color: 'bg-amber-200', name: 'Macaco' }
+            ],
+            emojis: [
+                { icon: '🤪', color: 'bg-yellow-100', name: 'Maluco' },
+                { icon: '😎', color: 'bg-blue-100', name: 'Estiloso' },
+                { icon: '🥳', color: 'bg-purple-100', name: 'Festa' },
+                { icon: '🤩', color: 'bg-pink-100', name: 'Estrela' },
+                { icon: '👻', color: 'bg-indigo-100', name: 'Fantasma' },
+                { icon: '🤖', color: 'bg-slate-200', name: 'Robô' },
+                { icon: 'Unicórnio 🦄', iconOnly: '🦄', color: 'bg-fuchsia-100', name: 'Unicórnio' },
+                { icon: '👽', color: 'bg-lime-100', name: 'ET' }
+            ],
+            heroes: [
+                { icon: '🦸‍♂️', color: 'bg-red-100', name: 'Super-Herói' },
+                { icon: '🦸‍♀️', color: 'bg-pink-100', name: 'Super-Heroína' },
+                { icon: '🥷', color: 'bg-gray-200', name: 'Ninja' },
+                { icon: '🧙‍♂️', color: 'bg-indigo-100', name: 'Mago' },
+                { icon: '🚀', color: 'bg-cyan-100', name: 'Foguete' },
+                { icon: '👑', color: 'bg-amber-100', name: 'Coroa' },
+                { icon: '🛡️', color: 'bg-blue-100', name: 'Escudo' },
+                { icon: '⚡', color: 'bg-yellow-100', name: 'Raio' }
+            ]
+        };
+
+        // Game Configuration & State Variables
+        let currentTheme = 'animals';
+        let currentDifficulty = 'easy'; // easy (4 pairs), medium (6 pairs), hard (8 pairs)
+        let cardsArr = [];
+        let flippedCards = [];
+        let matchedPairs = 0;
+        let totalPairs = 4;
+        let moves = 0;
+        let timerInterval = null;
+        let secondsElapsed = 0;
+        let isBoardLocked = false;
+
+        // Initialize Game
+        window.onload = () => {
+            resetGame();
+        };
+
+        function changeTheme(themeKey) {
+            currentTheme = themeKey;
+            document.querySelectorAll('.theme-btn').forEach(btn => {
+                btn.classList.remove('bg-purple-600', 'text-white', 'shadow');
+                btn.classList.add('text-purple-800', 'hover:bg-purple-200');
+            });
+            const activeBtn = document.getElementById(`theme-${themeKey}`);
+            activeBtn.classList.add('bg-purple-600', 'text-white', 'shadow');
+            activeBtn.classList.remove('text-purple-800', 'hover:bg-purple-200');
+            resetGame();
+        }
+
+        function changeDifficulty(diffKey) {
+            currentDifficulty = diffKey;
+            document.querySelectorAll('.diff-btn').forEach(btn => {
+                btn.classList.remove('bg-green-500', 'bg-blue-500', 'bg-red-500', 'text-white', 'shadow');
+                btn.classList.add('text-purple-800', 'hover:bg-purple-200');
+            });
+            const activeBtn = document.getElementById(`diff-${diffKey}`);
+            const colorClass = diffKey === 'easy' ? 'bg-green-500' : diffKey === 'medium' ? 'bg-blue-500' : 'bg-red-500';
+            activeBtn.classList.add(colorClass, 'text-white', 'shadow');
+            activeBtn.classList.remove('text-purple-800', 'hover:bg-purple-200');
+
+            totalPairs = diffKey === 'easy' ? 4 : diffKey === 'medium' ? 6 : 8;
+            resetGame();
+        }
+
+        function resetGame() {
+            // Reset State Variables
+            flippedCards = [];
+            matchedPairs = 0;
+            moves = 0;
+            secondsElapsed = 0;
+            isBoardLocked = false;
+
+            // Reset UI Displays
+            document.getElementById('movesCount').innerText = moves;
+            document.getElementById('pairsCount').innerText = `${matchedPairs} / ${totalPairs}`;
+            document.getElementById('timer').innerText = "00:00";
+
+            clearInterval(timerInterval);
+            timerInterval = null;
+
+            // Prepare Cards
+            setupGameBoard();
+        }
+
+        function startTimer() {
+            if (!timerInterval) {
+                timerInterval = setInterval(() => {
+                    secondsElapsed++;
+                    const mins = String(Math.floor(secondsElapsed / 60)).padStart(2, '0');
+                    const secs = String(secondsElapsed % 60).padStart(2, '0');
+                    document.getElementById('timer').innerText = `${mins}:${secs}`;
+                }, 1000);
+            }
+        }
+
+        function setupGameBoard() {
+            const board = document.getElementById('gameBoard');
+            board.innerHTML = '';
+
+            // Grid Columns Layout based on Difficulty
+            if (totalPairs === 4) {
+                board.className = "w-full grid grid-cols-2 sm:grid-cols-4 gap-3 p-3 bg-white/40 backdrop-blur-md rounded-3xl border-4 border-white/60 min-h-[340px]";
+            } else if (totalPairs === 6) {
+                board.className = "w-full grid grid-cols-3 sm:grid-cols-4 gap-3 p-3 bg-white/40 backdrop-blur-md rounded-3xl border-4 border-white/60 min-h-[340px]";
+            } else {
+                board.className = "w-full grid grid-cols-4 gap-2 md:gap-3 p-3 bg-white/40 backdrop-blur-md rounded-3xl border-4 border-white/60 min-h-[340px]";
+            }
+
+            // Select item pool and duplicate to create pairs
+            const selectedThemeItems = themes[currentTheme].slice(0, totalPairs);
+            const deck = [...selectedThemeItems, ...selectedThemeItems];
+
+            // Shuffle array (Fisher-Yates)
+            for (let i = deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [deck[i], deck[j]] = [deck[j], deck[i]];
+            }
+
+            // Create HTML elements for cards
+            deck.forEach((item, index) => {
+                const card = document.createElement('div');
+                card.className = "card perspective-1000 aspect-square cursor-pointer min-h-[80px]";
+                card.dataset.index = index;
+                card.dataset.name = item.name;
+
+                const displayIcon = item.iconOnly || item.icon;
+
+                card.innerHTML = `
+                    <div class="card-inner">
+                        <div class="card-front bg-gradient-to-br from-purple-500 to-indigo-600 border-4 border-white text-white text-3xl font-bold hover:scale-105 transition-transform flex items-center justify-center shadow-md">
+                            <span class="text-white/40 text-2xl font-black">?</span>
+                        </div>
+                        <div class="card-back ${item.color} border-4 border-white text-4xl md:text-5xl flex flex-col items-center justify-center p-1 shadow-md">
+                            <span>${displayIcon}</span>
+                            <span class="text-[10px] md:text-xs font-bold text-purple-900 mt-1">${item.name}</span>
+                        </div>
+                    </div>
+                `;
+
+                card.addEventListener('click', () => onCardClick(card));
+                board.appendChild(card);
+            });
+        }
+
+        function onCardClick(card) {
+            // Prevent interaction if locked, already flipped, or matched
+            if (isBoardLocked || card.classList.contains('flipped') || card.classList.contains('matched')) {
+                return;
+            }
+
+            // Start timer on first move
+            startTimer();
+
+            // Flip Card
+            sound.playFlip();
+            card.classList.add('flipped');
+            flippedCards.push(card);
+
+            if (flippedCards.length === 2) {
+                moves++;
+                document.getElementById('movesCount').innerText = moves;
+                checkMatch();
+            }
+        }
+
+        function checkMatch() {
+            isBoardLocked = true;
+            const [card1, card2] = flippedCards;
+            const isMatch = card1.dataset.name === card2.dataset.name;
+
+            if (isMatch) {
+                setTimeout(() => {
+                    sound.playMatch();
+                    card1.classList.add('matched');
+                    card2.classList.add('matched');
+                    matchedPairs++;
+                    document.getElementById('pairsCount').innerText = `${matchedPairs} / ${totalPairs}`;
+                    flippedCards = [];
+                    isBoardLocked = false;
+
+                    // Check for Game Victory
+                    if (matchedPairs === totalPairs) {
+                        handleVictory();
+                    }
+                }, 400);
+            } else {
+                setTimeout(() => {
+                    sound.playMismatch();
+                    card1.classList.remove('flipped');
+                    card2.classList.remove('flipped');
+                    flippedCards = [];
+                    isBoardLocked = false;
+                }, 1000);
+            }
+        }
+
+        function handleVictory() {
+            clearInterval(timerInterval);
+            sound.playVictory();
+
+            // Fire Confetti Cannon
+            if (window.confetti) {
+                confetti({
+                    particleCount: 100,
+                    spread: 70,
+                    origin: { y: 0.6 }
+                });
+            }
+
+            // Calculate Stars & Trophy Title based on efficiency
+            const minPossibleMoves = totalPairs;
+            let stars = 3;
+            let trophy = "Super Mestre da Memória! 🌟";
+
+            if (moves > minPossibleMoves * 2) {
+                stars = 1;
+                trophy = "Bom Trabalho! Continue Praticando! 👍";
+            } else if (moves > minPossibleMoves * 1.4) {
+                stars = 2;
+                trophy = "Muito Bem! Você é Fera! 🔥";
+            }
+
+            // Render Stars
+            const starContainer = document.getElementById('starRating');
+            starContainer.innerHTML = '';
+            for (let i = 0; i < 3; i++) {
+                if (i < stars) {
+                    starContainer.innerHTML += '<i class="fas fa-star text-yellow-400 drop-shadow"></i>';
+                } else {
+                    starContainer.innerHTML += '<i class="far fa-star text-gray-300"></i>';
+                }
+            }
+
+            document.getElementById('trophyTitle').innerText = trophy;
+            document.getElementById('finalTime').innerText = document.getElementById('timer').innerText;
+            document.getElementById('finalMoves').innerText = moves;
+
+            // Show Modal with smooth animation
+            const modal = document.getElementById('victoryModal');
+            const modalCard = document.getElementById('modalCard');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            
+            setTimeout(() => {
+                modalCard.classList.remove('scale-90', 'opacity-0');
+                modalCard.classList.add('scale-100', 'opacity-100');
+            }, 50);
+        }
+
+        function closeModalAndRestart() {
+            const modal = document.getElementById('victoryModal');
+            const modalCard = document.getElementById('modalCard');
+            
+            modalCard.classList.remove('scale-100', 'opacity-100');
+            modalCard.classList.add('scale-90', 'opacity-0');
+
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+                resetGame();
+            }, 200);
+        }
+
+        function toggleSound() {
+            sound.enabled = !sound.enabled;
+            const icon = document.getElementById('soundIcon');
+            const btn = document.getElementById('soundToggleBtn');
+
+            if (sound.enabled) {
+                icon.className = 'fas fa-volume-up text-xl';
+                btn.classList.remove('opacity-50');
+            } else {
+                icon.className = 'fas fa-volume-mute text-xl';
+                btn.classList.add('opacity-50');
+            }
+        }
+    </script>
+</body>
+</html>
